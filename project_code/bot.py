@@ -14,7 +14,8 @@ from matches_detection.lfl import start_lfl_task
 from matches_detection.vcl import start_vcl_task
 from matches_detection.gc import start_gc_task
 from matches_detection.inter import start_inter_task
-from matches_detection.lolvalrl import start_lolvalrl_task
+from matches_detection.lolval import start_lolval_task
+from matches_detection.rl import start_rl_task
 import signal
 
 intents = discord.Intents.default()
@@ -40,7 +41,8 @@ signal.signal(signal.SIGTERM, lambda s, f: handle_exit_signal())
 
 @bot.event
 async def on_ready():
-    start_lolvalrl_task(bot, DB_PASSWORD)
+    start_lolval_task(bot, DB_PASSWORD)
+    start_rl_task(bot, DB_PASSWORD)
     start_lfl_task(bot, DB_PASSWORD)
     start_vcl_task(bot, DB_PASSWORD)
     start_gc_task(bot, DB_PASSWORD)
