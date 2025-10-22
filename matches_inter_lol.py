@@ -122,6 +122,7 @@ def update_matches():
 
                 """
 
+
                 # Remplir les valeurs avec des valeurs par défaut si nécessaire
                 values = (
                     match.get("pageid"),
@@ -141,7 +142,7 @@ def update_matches():
                     match.get("game"),
                     match.get("patch"),
                     json.dumps(match.get("links", {})),  # Convertir en chaîne JSON
-		    match.get("bestof"),
+		            match.get("bestof"),
                     match.get("date"),
                     dateexact,  # Valeur booléenne ou False
                     json.dumps(match.get("stream", {})),  # Convertir en chaîne JSON

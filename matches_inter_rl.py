@@ -38,6 +38,7 @@ def update_matches():
     # Pagination pour récupérer tous les matchs
     while True:
         response = requests.get(url, headers=headers, params=params)
+        print(response.url)
 
         if response.status_code == 200:
             data = response.json().get("result", [])
@@ -172,4 +173,4 @@ while True:
 
     # Attendre 1 heures avant de vérifier à nouveau
     update_matches()
-    time.sleep(600)
+    time.sleep(1200)

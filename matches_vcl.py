@@ -1,3 +1,4 @@
+import datetime
 import psycopg
 import requests
 import os
@@ -117,6 +118,7 @@ def update_matches():
                     match2games = EXCLUDED.match2games,
                     match2opponents = EXCLUDED.match2opponents;
                 """
+
 
                 # Remplir les valeurs avec des valeurs par défaut si nécessaire
                 values = (

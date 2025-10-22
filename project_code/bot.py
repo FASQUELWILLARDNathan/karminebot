@@ -11,11 +11,11 @@ import locale
 import traceback
 from discord import app_commands, Interaction
 from matches_detection.lfl import start_lfl_task
-from matches_detection.vcl import start_vcl_task
 from matches_detection.gc import start_gc_task
 from matches_detection.inter import start_inter_task
 from matches_detection.lolval import start_lolval_task
 from matches_detection.rl import start_rl_task
+from matches_detection.francerl import start_france_task
 import signal
 
 intents = discord.Intents.default()
@@ -28,25 +28,157 @@ dbname = settings.dbname
 user = settings.user
 host = settings.host
 
-async def shutdown():
-    print("Arrêt du bot, on stoppe les tâches...")
-    await bot.close()
+async def shutdown(reason="Raison indéterminée"):
+    try:
+        with psycopg.connect(f"dbname={dbname} user={user} password={DB_PASSWORD} host={host}") as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT guild_id, notifications_channel_id FROM guild_configs WHERE is_active = TRUE")
+                guild_channels = cur.fetchall()
 
-def handle_exit_signal():
-    asyncio.create_task(shutdown())
+                for guild_id, channel_id in guild_channels:
+                    channel = bot.get_channel(channel_id)
+                    if channel:
+                        try:
+                            await channel.send(f"🛑 Arrêt du Bot. Raison : **{reason}**")
+                        except discord.Forbidden:
+                            print(f"Pas la permission d'envoyer dans {channel_id}. Marquage inactif.")
+                            with psycopg.connect(f"dbname={dbname} user={user} password={DB_PASSWORD} host={host}") as conn2:
+                                with conn2.cursor() as cur2:
+                                    cur2.execute("UPDATE guild_configs SET is_active = FALSE WHERE notifications_channel_id = %s", (channel_id,))
+                                    conn2.commit()
+                        except Exception as send_err:
+                            print(f"Erreur envoi message dans {channel_id}: {send_err}")
+                    else:
+                        print(f"Channel ID {channel_id} non trouvé ou inaccessible.")
 
-# Capturer Ctrl+C (SIGINT) et SIGTERM (kill)
-signal.signal(signal.SIGINT, lambda s, f: handle_exit_signal())
-signal.signal(signal.SIGTERM, lambda s, f: handle_exit_signal())
+                print("Arrêt du bot...")
+                await bot.close()
+    except Exception as e:
+            print(f"Erreur : {e}")
+
+# ---- Commande Discord pour arrêter avec raison ----
+@bot.command()
+@commands.is_owner()  # optionnel : limite l’usage à toi (le propriétaire du bot)
+async def stop(ctx, *, reason="Arrêt manuel via commande"):
+    await shutdown(reason)
+
+def insert_test_match():
+    # Création d’une date dans 47 minutes
+    date_match = (datetime.utcnow() + timedelta(minutes=47)).strftime("%Y-%m-%d %H:%M:%S")
+
+    fake_match = {
+        "pageid": 9999999,
+        "pagename": "TestMatchKC",
+        "namespace": 0,
+        "objectname": f"test-match-{int(datetime.utcnow().timestamp())}",
+        "match2id": 123456,
+        "match2bracketid": 0,
+        "status": "upcoming",
+        "winner": None,
+        "walkover": None,
+        "resulttype": None,
+        "finished": False,
+        "mode": None,
+        "type": None,
+        "section": "Test Section",
+        "game": "League of Legends",
+        "patch": "14.18",
+        "links": {},
+        "bestof": 1,
+        "date": date_match,
+        "dateexact": True,
+        "stream": {},
+        "vod": None,
+        "tournament": "Test Tournament",
+        "parent": None,
+        "tickername": "KC vs TEST",
+        "shortname": "KCorp vs Test",
+        "series": "BO1",
+        "icon": None,
+        "iconurl": None,
+        "icondark": None,
+        "icondarkurl": None,
+        "liquipediatier": "Test Tier",
+        "liquipediatiertype": "Test Type",
+        "publishertier": None,
+        "extradata": {},
+        "match2bracketdata": {},
+        "match2games": {},
+        "match2opponents": {
+            "1": {"name": "Karmine Corp"},
+            "2": {"name": "Test Opponent"}
+        }
+    }
+
+    query = """
+    INSERT INTO matches (
+        pageid, pagename, namespace, objectname, match2id, match2bracketid,
+        status, winner, walkover, resulttype, finished, mode, type, section,
+        game, patch, links, bestof, date, dateexact, stream, vod, tournament,
+        parent, tickername, shortname, series, icon, iconurl, icondark, icondarkurl,
+        liquipediatier, liquipediatiertype, publishertier, extradata,
+        match2bracketdata, match2games, match2opponents
+    ) VALUES (
+        %(pageid)s, %(pagename)s, %(namespace)s, %(objectname)s, %(match2id)s, %(match2bracketid)s,
+        %(status)s, %(winner)s, %(walkover)s, %(resulttype)s, %(finished)s, %(mode)s, %(type)s, %(section)s,
+        %(game)s, %(patch)s, %(links)s, %(bestof)s, %(date)s, %(dateexact)s, %(stream)s, %(vod)s, %(tournament)s,
+        %(parent)s, %(tickername)s, %(shortname)s, %(series)s, %(icon)s, %(iconurl)s, %(icondark)s, %(icondarkurl)s,
+        %(liquipediatier)s, %(liquipediatiertype)s, %(publishertier)s, %(extradata)s,
+        %(match2bracketdata)s, %(match2games)s, %(match2opponents)s
+    )
+    ON CONFLICT (objectname) DO UPDATE SET
+        status = EXCLUDED.status,
+        date = EXCLUDED.date,
+        dateexact = EXCLUDED.dateexact,
+        match2opponents = EXCLUDED.match2opponents;
+    """
+
+    with psycopg.connect(f"dbname={dbname} user={user} password={DB_PASSWORD} host={host}") as conn:
+        with conn.cursor() as cur:
+            # JSON dump des champs dict
+            fake_match["links"] = json.dumps(fake_match["links"])
+            fake_match["stream"] = json.dumps(fake_match["stream"])
+            fake_match["extradata"] = json.dumps(fake_match["extradata"])
+            fake_match["match2bracketdata"] = json.dumps(fake_match["match2bracketdata"])
+            fake_match["match2games"] = json.dumps(fake_match["match2games"])
+            fake_match["match2opponents"] = json.dumps(fake_match["match2opponents"])
+
+            cur.execute(query, fake_match)
+            conn.commit()
+            return date_match  # On retourne la date pour l’afficher dans Discord
+        
+def delete_test_match():
+    with psycopg.connect(f"dbname={dbname} user={user} password={DB_PASSWORD} host={host}") as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM matches WHERE pageid = %s", ('9999999',))  # <-- attention aux quotes
+            deleted_count = cur.rowcount  # <-- nombre de lignes supprimées
+            conn.commit()
+            return deleted_count
+        
+
+@bot.command(name="inserermatch")
+@commands.is_owner()
+async def inserer_match(ctx):
+    date_match = insert_test_match()
+    await ctx.send(f"✅ Match test inséré pour **{date_match} UTC**")
+
+@bot.command(name="supprimermatch")
+@commands.is_owner()
+async def supprimer_match(ctx):
+    count = delete_test_match()
+    if count > 0:
+        await ctx.send(f"🗑️ Match test supprimé ({count} ligne(s) supprimée(s)).")
+    else:
+        await ctx.send("⚠️ Aucun match test trouvé à supprimer.")
 
 @bot.event
 async def on_ready():
     start_lolval_task(bot, DB_PASSWORD)
     start_rl_task(bot, DB_PASSWORD)
     start_lfl_task(bot, DB_PASSWORD)
-    start_vcl_task(bot, DB_PASSWORD)
     start_gc_task(bot, DB_PASSWORD)
     start_inter_task(bot, DB_PASSWORD)
+    start_france_task(bot, DB_PASSWORD)
     try:
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} slash commands synchronisées.")
@@ -96,6 +228,7 @@ async def weekmatches(ctx):
         OR match2opponents::text ILIKE '%%Karmine Corp Blue%%'
         OR match2opponents::text ILIKE '%%KC Blue Stars%%'
         OR match2opponents::text ILIKE '%%Karmine Corp GC%%'
+        OR match2opponents::text ILIKE '%%France%%'
         )
     ORDER BY date ASC;
     """
@@ -130,25 +263,25 @@ async def weekmatches(ctx):
                     if teams_result and isinstance(teams_result[0], list):
                         team_names = teams_result[0]
 
-                        # Trouver la version de la Karmine présente
-                        if any(name in team_names for name in ["Karmine Corp", "Karmine Corp Blue", "KC Blue Stars", "Karmine Corp GC"]):
-                            if "Karmine Corp" in team_names:
-                                kc_name = "Karmine Corp"
-                            elif "Karmine Corp Blue" in team_names:
-                                kc_name = "Karmine Corp Blue"
-                            elif "KC Blue Stars" in team_names:
-                                kc_name = "KC Blue Stars"
-                            elif "Karmine Corp GC" in team_names:
-                                kc_name = "Karmine Corp GC"
+                        kc_aliases = ["Karmine Corp", "Karmine Corp Blue", "KC Blue Stars", "Karmine Corp GC", "France"]
+                        kc_name = None
 
+                        for name in team_names:
+                            for alias in kc_aliases:
+                                if alias.lower() in name.lower():
+                                    kc_name = name  # On prend le nom réel tel qu'il apparaît dans team_names
+                                    break
+                            if kc_name:
+                                break
+
+                        if kc_name:
                             kc_index = team_names.index(kc_name)
 
-                            # Déterminer l'adversaire si la liste contient 2 équipes
                             if len(team_names) == 2:
                                 opponent_index = 1 - kc_index
                                 opponent = team_names[opponent_index]
                             else:
-                                opponent = "Adversaire non déterminer"  # Nom manquant
+                                opponent = "Adversaire non déterminé"
 
                             if winner == "":
                                 result = "À venir"
@@ -156,7 +289,6 @@ async def weekmatches(ctx):
                                 result = "Gagné"
                             else:
                                 result = "Perdu"
-
                         else:
                             opponent = "Inconnu"
                             result = "Inconnu"
@@ -195,6 +327,7 @@ async def monthmatches(ctx):
             AND EXTRACT(YEAR FROM date) = %s
             AND (
                 match2opponents::text ILIKE '%%Karmine Corp%%'
+                OR match2opponents::text ILIKE '%%France%%'
             )
         ORDER BY date ASC;
     """
@@ -228,25 +361,25 @@ async def monthmatches(ctx):
                     if teams_result and isinstance(teams_result[0], list):
                         team_names = teams_result[0]
 
-                        # Trouver la version de la Karmine présente
-                        if any(name in team_names for name in ["Karmine Corp", "Karmine Corp Blue", "KC Blue Stars", "Karmine Corp GC"]):
-                            if "Karmine Corp" in team_names:
-                                kc_name = "Karmine Corp"
-                            elif "Karmine Corp Blue" in team_names:
-                                kc_name = "Karmine Corp Blue"
-                            elif "KC Blue Stars" in team_names:
-                                kc_name = "KC Blue Stars"
-                            elif "Karmine Corp GC" in team_names:
-                                kc_name = "Karmine Corp GC"
+                        kc_aliases = ["Karmine Corp", "Karmine Corp Blue", "KC Blue Stars", "Karmine Corp GC", "France"]
+                        kc_name = None
 
+                        for name in team_names:
+                            for alias in kc_aliases:
+                                if alias.lower() in name.lower():
+                                    kc_name = name  # On prend le nom réel tel qu'il apparaît dans team_names
+                                    break
+                            if kc_name:
+                                break
+
+                        if kc_name:
                             kc_index = team_names.index(kc_name)
 
-                            # Déterminer l'adversaire si la liste contient 2 équipes
                             if len(team_names) == 2:
                                 opponent_index = 1 - kc_index
                                 opponent = team_names[opponent_index]
                             else:
-                                opponent = "Adversaire non déterminer"  # Nom manquant
+                                opponent = "Adversaire non déterminé"
 
                             if winner == "":
                                 result = "À venir"
@@ -254,14 +387,13 @@ async def monthmatches(ctx):
                                 result = "Gagné"
                             else:
                                 result = "Perdu"
-
                         else:
                             opponent = "Inconnu"
                             result = "Inconnu"
                     else:
                         opponent = "Inconnu"
                         result = "Inconnu"
-
+                    
                     date = date + timedelta(hours=2)
                     message += f"📅 {date.strftime('%d/%m %H:%M')} - {tournament} vs {opponent} - {result}\n"
 
@@ -269,6 +401,7 @@ async def monthmatches(ctx):
                 await split_and_send(ctx, message)
 
     except Exception as e:
+        traceback.print_exc()
         await ctx.send(f"Erreur lors de la récupération des matchs : {e}")
 
 
@@ -548,13 +681,8 @@ def get_prediction_stats():
 
 
 @bot.hybrid_command(name="predictionstatsglobal", description="Affiche les statistiques des prédictions des utilisateurs pour ce mois-ci")
+@commands.is_owner()
 async def predictionstatsglobal(ctx):
-    OWNER_ID = 742419497062891711
-
-    if ctx.author.id != OWNER_ID:
-        await ctx.send("Tu n'as pas la permission d'utiliser cette commande.")
-        return
-
     try:
         # Récupérer les statistiques des prédictions
         stats = get_prediction_stats()
@@ -620,7 +748,6 @@ async def predictionstats(ctx):
 
 async def main():
     await bot.load_extension("inscription")
-    await bot.load_extension("bienvenue")
     await bot.start(token)
 
 asyncio.run(main())

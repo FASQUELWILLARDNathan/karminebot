@@ -121,6 +121,7 @@ def update_matches():
 
                 """
 
+
                 # Remplir les valeurs avec des valeurs par défaut si nécessaire
                 values = (
                     match.get("pageid"),

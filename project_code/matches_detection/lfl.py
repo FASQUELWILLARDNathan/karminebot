@@ -20,8 +20,8 @@ def start_lfl_task(bot, DB_PASSWORD):
     @tasks.loop(minutes=1)
     async def check_upcoming_matches_lfl():
         now = datetime.now()
-        window_start = now + timedelta(minutes=45)
-        window_end = now + timedelta(minutes=46)
+        window_start = now + timedelta(minutes=59)
+        window_end = now + timedelta(minutes=60)
 
         query = """
             SELECT objectname, tournament, date, game, match2opponents

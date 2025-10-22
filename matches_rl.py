@@ -119,6 +119,7 @@ def update_matches():
                     match2opponents = EXCLUDED.match2opponents;
                 """
 
+
                 # Remplir les valeurs avec des valeurs par défaut si nécessaire
                 values = (
                     match.get("pageid"),
